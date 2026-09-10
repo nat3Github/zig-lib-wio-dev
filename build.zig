@@ -17,6 +17,16 @@ pub fn build(b: *std.Build) !void {
     const enable_joystick = b.option(bool, "enable_joystick", "Enable joystick support (default: false)") orelse false;
     const enable_audio = b.option(bool, "enable_audio", "Enable audio support (default: false)") orelse false;
 
+    // Cross-compile system paths, passed explicitly rather than via --sysroot or
+    // --search-prefix: both of those are graph-wide, so they also hit native host-tool
+    // steps in the same build graph, and --search-prefix never reaches translate-c.
+    const system_paths: SystemPaths = .{
+        .include = b.option(std.Build.LazyPath, "system_include_path", "Target system include path (for cross-compiling)"),
+        .framework = b.option(std.Build.LazyPath, "system_framework_path", "Target system framework path (for cross-compiling to macOS)"),
+        .library = b.option(std.Build.LazyPath, "library_path", "Target system library path (for cross-compiling)"),
+    };
+    system_paths.apply(module);
+
     var enable_x11 = false;
     var enable_wayland = false;
 
@@ -81,14 +91,6 @@ pub fn build(b: *std.Build) !void {
         .macos => {
             module.addCSourceFile(.{ .file = b.path("src/macos.m"), .flags = &.{ "-fobjc-arc", "-Wno-deprecated-declarations" } });
 
-            // No addLibraryPath(sysroot/usr/lib) here: Zig's --sysroot forwarding
-            // already resolves it via -syslibroot; joining it explicitly double-joins
-            // the path (see zig-lib-zglfw-dev-fork commit 9dac2da / raylib fork fix).
-            if (b.sysroot) |sysroot| {
-                module.addSystemFrameworkPath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "System/Library/Frameworks" }) });
-                module.addSystemIncludePath(.{ .cwd_relative = b.pathJoin(&.{ sysroot, "usr/include" }) });
-            }
-
             module.linkFramework("Cocoa", .{});
             if (enable_vulkan) {
                 module.linkFramework("QuartzCore", .{});
@@ -120,6 +122,7 @@ pub fn build(b: *std.Build) !void {
                     .target = target,
                     .optimize = optimize,
                 });
+                system_paths.apply(translate_c);
                 module.addImport("c", translate_c.createModule());
 
                 module.linkSystemLibrary("android", .{});
@@ -222,6 +225,7 @@ pub fn build(b: *std.Build) !void {
                 if (b.lazyDependency("wio_unix_headers", .{})) |unix_headers| {
                     translate_c.addIncludePath(unix_headers.path("include"));
                 }
+                system_paths.apply(translate_c);
                 module.addImport("c", translate_c.createModule());
 
                 if (system_integration) {
@@ -276,6 +280,7 @@ pub fn build(b: *std.Build) !void {
                 .target = target,
                 .optimize = optimize,
             });
+            system_paths.apply(translate_c);
             module.addImport("c", translate_c.createModule());
 
             module.addCSourceFile(.{ .file = b.path("src/haiku.cpp") });
@@ -307,6 +312,22 @@ pub fn build(b: *std.Build) !void {
         },
     }
 }
+
+const SystemPaths = struct {
+    include: ?std.Build.LazyPath,
+    framework: ?std.Build.LazyPath,
+    library: ?std.Build.LazyPath,
+
+    /// `step` is a *std.Build.Module or a *std.Build.Step.TranslateC; both take the
+    /// same search-path calls. TranslateC has no link step, so library is ignored there.
+    fn apply(self: SystemPaths, step: anytype) void {
+        if (self.include) |path| step.addSystemIncludePath(path);
+        if (self.framework) |path| step.addSystemFrameworkPath(path);
+        if (@TypeOf(step) == *std.Build.Module) {
+            if (self.library) |path| step.addLibraryPath(path);
+        }
+    }
+};
 
 pub fn setupApk(wio: *std.Build.Dependency, apk: anytype) void {
     const b = wio.builder;
