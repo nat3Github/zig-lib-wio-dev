@@ -91,6 +91,7 @@ static void warpCursor(NSWindow *window) {
 
 - (void)windowDidBecomeKey:(NSNotification *)notification {
     wioFocused(zig);
+    wioModifiers(zig, [NSEvent modifierFlags]);
 
     NSWindow *window = [notification object];
     WioView *view = [window contentView];
@@ -613,7 +614,8 @@ char *wioGetClipboardText(size_t *len) {
 }
 
 void wioDrawAvailable(NSWindow *window) {
-    [[NSNotificationCenter defaultCenter] postNotificationName:NSWindowDidExposeNotification object:window];
+    [[window delegate] windowDidExpose:nil];
+    wioCancelWait();
 }
 
 #ifdef WIO_FRAMEBUFFER

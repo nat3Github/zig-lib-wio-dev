@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -21,8 +22,8 @@ pub fn build(b: *std.Build) !void {
     // --search-prefix: both of those are graph-wide, so they also hit native host-tool
     // steps in the same build graph, and --search-prefix never reaches translate-c.
     const system_paths: SystemPaths = .{
-        .include = b.option(std.Build.LazyPath, "system_include_path", "Target system include path (for cross-compiling)"),
-        .framework = b.option(std.Build.LazyPath, "system_framework_path", "Target system framework path (for cross-compiling to macOS)"),
+        .include = b.option(std.Build.LazyPath, "include_path", "Target system include path (for cross-compiling)"),
+        .framework = b.option(std.Build.LazyPath, "framework_path", "Target system framework path (for cross-compiling to macOS)"),
         .library = b.option(std.Build.LazyPath, "library_path", "Target system library path (for cross-compiling)"),
     };
     system_paths.apply(module);
